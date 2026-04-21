@@ -16,13 +16,16 @@
 <body>
   <div id="panel">
     <b>OSRM Routing</b><br>
-    <small>Haz clic en dos puntos del mapa</small>
+    <small>Haz clic en dos puntos del mapa para trazar la ruta.</small>
   </div>
   <div id="viewDiv"></div>
 
   <script>
     require([
-      "esri/Map", "esri/views/MapView", "esri/Graphic", "esri/geometry/Polyline"
+      "esri/Map", 
+      "esri/views/MapView", 
+      "esri/Graphic", 
+      "esri/geometry/Polyline"
     ], function(Map, MapView, Graphic, Polyline) {
       
       const map = new Map({ basemap: "streets-navigation-vector" });
@@ -30,14 +33,14 @@
       const view = new MapView({ 
         container: "viewDiv", 
         map: map, 
-        center: [-70.614, -33.423], // Providencia, Santiago
+        center: [-70.614, -33.423], // Centrado en Providencia
         zoom: 14 
       });
 
       let points = [];
 
       view.on("click", async (event) => {
-        // Reiniciar si ya hay dos puntos
+        // Si ya hay 2 puntos, limpiamos el mapa para empezar de nuevo
         if (points.length >= 2) {
             points = [];
             view.graphics.removeAll();
@@ -48,26 +51,35 @@
         
         points.push({ lat: lat, lon: lon });
 
-        // Añadir marcador visual del punto clicado
+        // Añadir marcador visual (punto naranja)
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
-          symbol: { type: "simple-marker", color: "#FF5722", outline: { color: "white", width: 2 } }
+          symbol: { 
+            type: "simple-marker", 
+            color: "#FF5722", 
+            outline: { color: "white", width: 2 } 
+          }
         }));
 
-        // Cuando tengamos exactamente dos puntos, calculamos la ruta
+        // Al completar el segundo punto, llamamos al proxy
         if (points.length === 2) {
+          // Formateamos las coordenadas para OSRM (lon,lat;lon,lat)
           const coordsString = `${points[0].lon},${points[0].lat};${points[1].lon},${points[1].lat}`;
           
           try {
-            // REEMPLAZO Y CORRECCIÓN AQUÍ:
-            // Llamamos directamente a la función de Netlify para evitar errores de redirección
+            // Llamada directa a tu función de Netlify
             const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             
-            if (!res.ok) throw new Error("Error en la respuesta del servidor");
+            if (!res.ok) {
+              const errInfo = await res.json();
+              console.error("Error del servidor:", errInfo);
+              return;
+            }
             
             const data = await res.json();
 
             if (data.features && data.features.length > 0) {
+              // Creamos la línea de la ruta
               const routeGraphic = new Graphic({
                 geometry: new Polyline(data.features[0].geometry),
                 symbol: { 
@@ -77,22 +89,21 @@
                 },
                 attributes: data.features[0].attributes,
                 popupTemplate: { 
-                  title: "Información de Ruta", 
-                  content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo:</b> {Tiempo_min} min" 
+                  title: "Información de Ruta (OSRM)", 
+                  content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo estimado:</b> {Tiempo_min} min" 
                 }
               });
 
               view.graphics.add(routeGraphic);
               
-              // Abrir el popup con la info de OSRM
+              // Abrimos el popup automáticamente en el último punto clicado
               view.popup.open({ 
                 features: [routeGraphic], 
                 location: event.mapPoint 
               });
             }
           } catch (err) {
-            console.error("Error en el ruteo:", err);
-            alert("No se pudo calcular la ruta. Revisa la consola.");
+            console.error("Error en la petición de ruteo:", err);
           }
         }
       });
