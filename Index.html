@@ -7,8 +7,10 @@
   <script src="https://js.arcgis.com/4.28/"></script>
   <style>
     html, body, #viewDiv { height: 100%; width: 100%; margin: 0; padding: 0; }
-    #panel { position: absolute; top: 15px; left: 15px; background: white; padding: 15px; 
-             border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); z-index: 10; font-family: sans-serif; }
+    #panel { 
+      position: absolute; top: 15px; left: 15px; background: white; padding: 15px; 
+      border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.3); z-index: 10; font-family: sans-serif; 
+    }
   </style>
 </head>
 <body>
@@ -24,50 +26,73 @@
     ], function(Map, MapView, Graphic, Polyline) {
       
       const map = new Map({ basemap: "streets-navigation-vector" });
+      
       const view = new MapView({ 
         container: "viewDiv", 
         map: map, 
-        center: [-70.614, -33.423], // Providencia
+        center: [-70.614, -33.423], // Providencia, Santiago
         zoom: 14 
       });
 
       let points = [];
 
       view.on("click", async (event) => {
+        // Reiniciar si ya hay dos puntos
         if (points.length >= 2) {
             points = [];
             view.graphics.removeAll();
         }
 
-        points.push({ lat: event.mapPoint.latitude, lon: event.mapPoint.longitude });
+        const lon = event.mapPoint.longitude;
+        const lat = event.mapPoint.latitude;
+        
+        points.push({ lat: lat, lon: lon });
 
+        // Añadir marcador visual del punto clicado
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
           symbol: { type: "simple-marker", color: "#FF5722", outline: { color: "white", width: 2 } }
         }));
 
+        // Cuando tengamos exactamente dos puntos, calculamos la ruta
         if (points.length === 2) {
-          const coords = `${points[0].lon},${points[0].lat};${points[1].lon},${points[1].lat}`;
+          const coordsString = `${points[0].lon},${points[0].lat};${points[1].lon},${points[1].lat}`;
           
           try {
-            const res = const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
+            // REEMPLAZO Y CORRECCIÓN AQUÍ:
+            // Llamamos directamente a la función de Netlify para evitar errores de redirección
+            const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
+            
+            if (!res.ok) throw new Error("Error en la respuesta del servidor");
+            
             const data = await res.json();
 
             if (data.features && data.features.length > 0) {
               const routeGraphic = new Graphic({
                 geometry: new Polyline(data.features[0].geometry),
-                symbol: { type: "simple-line", color: "#007AFF", width: 4 },
+                symbol: { 
+                    type: "simple-line", 
+                    color: "#007AFF", 
+                    width: 4 
+                },
                 attributes: data.features[0].attributes,
                 popupTemplate: { 
                   title: "Información de Ruta", 
                   content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo:</b> {Tiempo_min} min" 
                 }
               });
+
               view.graphics.add(routeGraphic);
-              view.popup.open({ features: [routeGraphic], location: event.mapPoint });
+              
+              // Abrir el popup con la info de OSRM
+              view.popup.open({ 
+                features: [routeGraphic], 
+                location: event.mapPoint 
+              });
             }
           } catch (err) {
             console.error("Error en el ruteo:", err);
+            alert("No se pudo calcular la ruta. Revisa la consola.");
           }
         }
       });
