@@ -44,25 +44,30 @@
             view.graphics.removeAll();
         }
 
-        points.push({ lon: event.mapPoint.longitude, lat: event.mapPoint.latitude });
+        const lon = event.mapPoint.longitude;
+        const lat = event.mapPoint.latitude;
+        points.push({ lon: lon, lat: lat });
 
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
           symbol: { type: "simple-marker", color: "#FF5722", outline: { color: "white", width: 2 } }
         }));
 
-        // Lógica de ruteo integrada
         if (points.length === 2) {
-          // Limitamos a 6 decimales para evitar el error 400 (Bad Request)
+          // Limpieza de coordenadas para evitar errores de URL
           const p1 = `${points[0].lon.toFixed(6)},${points[0].lat.toFixed(6)}`;
           const p2 = `${points[1].lon.toFixed(6)},${points[1].lat.toFixed(6)}`;
           const coordsString = `${p1};${p2}`;
           
           try {
-            // Llamada absoluta a la función de Netlify
+            // CAMBIO CLAVE: Ruta exacta a la función de Netlify
             const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             
-            if (!res.ok) throw new Error("Error en la respuesta del servidor");
+            if (!res.ok) {
+                const errText = await res.text();
+                console.error("Error en la función:", errText);
+                return;
+            }
             
             const data = await res.json();
 
@@ -80,7 +85,7 @@
               view.popup.open({ features: [routeGraphic], location: event.mapPoint });
             }
           } catch (err) {
-            console.error("Error en la petición:", err);
+            console.error("Error de conexión:", err);
           }
         }
       });
