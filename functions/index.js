@@ -1,30 +1,35 @@
 const axios = require('axios');
 
 exports.handler = async (event) => {
-  // Encabezados obligatorios para que ArcGIS y el navegador acepten la data
   const headers = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "Content-Type",
     "Content-Type": "application/json"
   };
 
+  // Buscamos 'coords' en los parámetros de la URL
   const coords = event.queryStringParameters ? event.queryStringParameters.coords : null;
 
   if (!coords) {
     return { 
       statusCode: 400, 
       headers, 
-      body: JSON.stringify({ error: "No se recibieron coordenadas" }) 
+      body: JSON.stringify({ error: "Faltan coordenadas", debug: event.queryStringParameters }) 
     };
   }
 
   try {
-    // Conexión al motor OSRM
-    const url = `https://router.project-osrm.org/route/v1/driving/${encodeURIComponent(coords)}?overview=full&geometries=geojson`;
+    // Llamada a OSRM (Motor público)
+    const url = `https://router.project-osrm.org/route/v1/driving/${coords}?overview=full&geometries=geojson`;
     const response = await axios.get(url);
+    
+    if (!response.data.routes || response.data.routes.length === 0) {
+      return { statusCode: 404, headers, body: JSON.stringify({ error: "No se encontró ruta" }) };
+    }
+
     const route = response.data.routes[0];
 
-    // Formateo estricto a Esri JSON
+    // Formato Esri JSON para ArcGIS
     const esriResponse = {
       geometryType: "esriGeometryPolyline",
       spatialReference: { wkid: 4326 },
@@ -46,7 +51,7 @@ exports.handler = async (event) => {
     return { 
       statusCode: 500, 
       headers, 
-      body: JSON.stringify({ error: "Error en motor OSRM", detail: error.message }) 
+      body: JSON.stringify({ error: "Error OSRM", detalle: error.message }) 
     };
   }
 };
