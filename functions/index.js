@@ -5,36 +5,43 @@ const app = express();
 
 const PORT = process.env.PORT || 3000;
 
-// Habilitamos CORS para que ArcGIS Online no bloquee la petición
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-// Servir el visor por si quieres entrar a la URL directa
-app.use(express.static('public'));
+// 1. ENDPOINT DE INFORMACIÓN (Clave para que no diga "Incompatible")
+// ArcGIS consulta esto para verificar que el servicio es de tipo 'Route'
+app.get('/solve/NAServer/Route', (req, res) => {
+    res.json({
+        currentVersion: 10.81,
+        serviceDescription: "Proxy OSRM para Providencia",
+        capabilities: "Route",
+        routeNetworkName: "OSRM_Network",
+        supportedImageReturnTypes: "MIME+Data"
+    });
+});
 
-// EL ENDPOINT PARA EL WIDGET DE DIRECCIONES
-app.all('/solve', async (req, res) => {
-    // 1. Extraemos las coordenadas (stops para ArcGIS, coords para tu lógica previa)
-    let coords = req.query.coords || req.query.stops;
+// 2. EL HANDLER QUE INTEGRÓ TU LÓGICA
+app.all('/solve/NAServer/Route/solve', async (req, res) => {
+    const params = { ...req.query, ...req.body };
+    let stops = params.stops;
 
-    // Si viene de la herramienta Direcciones nativa, llegará como un JSON en 'stops'
-    if (req.query.stops) {
-        try {
-            const stopsData = JSON.parse(req.query.stops);
-            coords = stopsData.features.map(f => `${f.geometry.x},${f.geometry.y}`).join(';');
-        } catch (e) {
-            console.error("Error parseando stops de ArcGIS");
-        }
-    }
-
-    if (!coords) {
-        return res.status(400).json({ error: "No se recibieron coordenadas" });
+    if (!stops) {
+        return res.status(400).json({ error: { code: 400, message: "No se recibieron coordenadas (stops)." } });
     }
 
     try {
-        // 2. Tu lógica original de OSRM con encodeURI
-        const url = `https://router.project-osrm.org/route/v1/driving/${encodeURI(coords)}?overview=full&geometries=geojson`;
-        const response = await axios.get(url);
+        // Parseamos los stops que envía ArcGIS
+        const stopsData = typeof stops === 'string' ? JSON.parse(stops) : stops;
+        
+        // Convertimos a formato OSRM [lon, lat]
+        const coords = stopsData.features.map(f => {
+            return `${f.geometry.x.toFixed(6)},${f.geometry.y.toFixed(6)}`;
+        }).join(';');
+
+        // Tu lógica de OSRM con encodeURI
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${encodeURI(coords)}?overview=full&geometries=geojson`;
+        const response = await axios.get(osrmUrl);
         
         if (!response.data.routes || response.data.routes.length === 0) {
             return res.status(404).json({ error: "Ruta no encontrada" });
@@ -42,38 +49,29 @@ app.all('/solve', async (req, res) => {
 
         const route = response.data.routes[0];
 
-        // 3. Tu estructura esriResponse integrada
-        // Importante: ArcGIS Direcciones busca el objeto 'routes' o 'features' directamente
-        const esriResponse = {
-            geometryType: "esriGeometryPolyline",
-            spatialReference: { wkid: 4326 },
-            features: [{
-                attributes: { 
-                    OBJECTID: 1, 
-                    Distancia_km: (route.distance / 1000).toFixed(2), 
-                    Tiempo_min: (route.duration / 60).toFixed(1) 
-                },
-                geometry: { 
-                    paths: [route.geometry.coordinates], 
-                    spatialReference: { wkid: 4326 } 
-                }
-            }],
-            // Añadimos este envoltorio para máxima compatibilidad con el widget nativo
+        // RESPUESTA COMPATIBLE CON EL WIDGET DE DIRECCIONES
+        const nasResponse = {
             routes: {
+                spatialReference: { wkid: 4326 },
                 features: [{
-                    attributes: { OBJECTID: 1 },
-                    geometry: { paths: [route.geometry.coordinates], spatialReference: { wkid: 4326 } }
+                    attributes: { 
+                        Name: "Ruta Providencia",
+                        Distancia_km: (route.distance / 1000).toFixed(2), 
+                        Tiempo_min: (route.duration / 60).toFixed(1) 
+                    },
+                    geometry: { 
+                        paths: [route.geometry.coordinates], 
+                        spatialReference: { wkid: 4326 } 
+                    }
                 }]
             }
         };
 
-        res.status(200).json(esriResponse);
+        res.json(nasResponse);
 
     } catch (error) {
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: { code: 500, message: error.message } });
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor de ruteo Providencia corriendo en puerto ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Servidor compatible con NAS activo en puerto ${PORT}`));
