@@ -33,14 +33,14 @@
       const view = new MapView({ 
         container: "viewDiv", 
         map: map, 
-        center: [-70.614, -33.423], // Centrado en Providencia
+        center: [-70.614, -33.423], // Providencia
         zoom: 14 
       });
 
       let points = [];
 
       view.on("click", async (event) => {
-        // Si ya hay 2 puntos, limpiamos el mapa para empezar de nuevo
+        // Reiniciar si ya hay dos puntos en el mapa
         if (points.length >= 2) {
             points = [];
             view.graphics.removeAll();
@@ -51,7 +51,7 @@
         
         points.push({ lat: lat, lon: lon });
 
-        // Añadir marcador visual (punto naranja)
+        // Dibujar marcador del punto clicado
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
           symbol: { 
@@ -61,25 +61,29 @@
           }
         }));
 
-        // Al completar el segundo punto, llamamos al proxy
+        // Ejecutar ruteo al tener el segundo punto
         if (points.length === 2) {
-          // Formateamos las coordenadas para OSRM (lon,lat;lon,lat)
-          const coordsString = `${points[0].lon},${points[0].lat};${points[1].lon},${points[1].lat}`;
+          // MODIFICACIÓN: Redondeo a 6 decimales para evitar URLs malformadas (Error 400)
+          const p1 = `${points[0].lon.toFixed(6)},${points[0].lat.toFixed(6)}`;
+          const p2 = `${points[1].lon.toFixed(6)},${points[1].lat.toFixed(6)}`;
+          const coordsString = `${p1};${p2}`;
           
+          console.log("Calculando ruta para:", coordsString);
+
           try {
-            // Llamada directa a tu función de Netlify
+            // Llamada directa a la función en la carpeta de Netlify
             const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             
             if (!res.ok) {
-              const errInfo = await res.json();
-              console.error("Error del servidor:", errInfo);
+              const errorDetail = await res.json();
+              console.error("Error desde el Proxy:", errorDetail);
               return;
             }
             
             const data = await res.json();
 
             if (data.features && data.features.length > 0) {
-              // Creamos la línea de la ruta
+              // Crear la geometría de la ruta
               const routeGraphic = new Graphic({
                 geometry: new Polyline(data.features[0].geometry),
                 symbol: { 
@@ -89,21 +93,21 @@
                 },
                 attributes: data.features[0].attributes,
                 popupTemplate: { 
-                  title: "Información de Ruta (OSRM)", 
-                  content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo estimado:</b> {Tiempo_min} min" 
+                  title: "Información de Ruta", 
+                  content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo:</b> {Tiempo_min} min" 
                 }
               });
 
               view.graphics.add(routeGraphic);
               
-              // Abrimos el popup automáticamente en el último punto clicado
+              // Abrir popup con resultados
               view.popup.open({ 
                 features: [routeGraphic], 
                 location: event.mapPoint 
               });
             }
           } catch (err) {
-            console.error("Error en la petición de ruteo:", err);
+            console.error("Error de conexión con la función:", err);
           }
         }
       });
