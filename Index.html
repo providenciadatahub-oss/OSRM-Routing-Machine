@@ -50,7 +50,7 @@
           const coords = `${points[0].lon},${points[0].lat};${points[1].lon},${points[1].lat}`;
           
           try {
-            const res = await fetch(`/get-route?coords=${coords}`);
+            const res = const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             const data = await res.json();
 
             if (data.features && data.features.length > 0) {
