@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <title>OSRM Routing Machine - Providencia</title>
+  <title>OSRM Routing - Providencia</title>
   <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css">
   <script src="https://js.arcgis.com/4.28/"></script>
   <style>
@@ -15,8 +15,8 @@
 </head>
 <body>
   <div id="panel">
-    <b>OSRM Routing - Providencia</b><br>
-    <small>Haz clic en dos puntos del mapa para calcular la ruta.</small>
+    <b>OSRM Routing</b><br>
+    <small>Haz clic en dos puntos para trazar la ruta.</small>
   </div>
   <div id="viewDiv"></div>
 
@@ -29,7 +29,6 @@
     ], function(Map, MapView, Graphic, Polyline) {
       
       const map = new Map({ basemap: "streets-navigation-vector" });
-      
       const view = new MapView({ 
         container: "viewDiv", 
         map: map, 
@@ -45,32 +44,22 @@
             view.graphics.removeAll();
         }
 
-        const lon = event.mapPoint.longitude;
-        const lat = event.mapPoint.latitude;
-        
-        points.push({ lon: lon, lat: lat });
+        points.push({ lon: event.mapPoint.longitude, lat: event.mapPoint.latitude });
 
-        // Marcador visual del punto
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
-          symbol: { 
-            type: "simple-marker", 
-            color: "#FF5722", 
-            outline: { color: "white", width: 2 } 
-          }
+          symbol: { type: "simple-marker", color: "#FF5722", outline: { color: "white", width: 2 } }
         }));
 
-        // INTEGRACIÓN DE LA MODIFICACIÓN
+        // Lógica de ruteo integrada
         if (points.length === 2) {
           // Limitamos a 6 decimales para evitar el error 400 (Bad Request)
           const p1 = `${points[0].lon.toFixed(6)},${points[0].lat.toFixed(6)}`;
           const p2 = `${points[1].lon.toFixed(6)},${points[1].lat.toFixed(6)}`;
           const coordsString = `${p1};${p2}`;
           
-          console.log("Petición a la función con:", coordsString);
-
           try {
-            // Llamada directa a la función de Netlify
+            // Llamada absoluta a la función de Netlify
             const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             
             if (!res.ok) throw new Error("Error en la respuesta del servidor");
@@ -80,24 +69,15 @@
             if (data.features && data.features.length > 0) {
               const routeGraphic = new Graphic({
                 geometry: new Polyline(data.features[0].geometry),
-                symbol: { 
-                    type: "simple-line", 
-                    color: "#007AFF", 
-                    width: 4 
-                },
+                symbol: { type: "simple-line", color: "#007AFF", width: 4 },
                 attributes: data.features[0].attributes,
                 popupTemplate: { 
-                  title: "Información de Ruta", 
-                  content: "<b>Distancia:</b> {Distancia_km} km<br><b>Tiempo:</b> {Tiempo_min} min" 
+                  title: "Resultado de Ruta", 
+                  content: "Distancia: {Distancia_km} km<br>Tiempo: {Tiempo_min} min" 
                 }
               });
-
               view.graphics.add(routeGraphic);
-              
-              view.popup.open({ 
-                features: [routeGraphic], 
-                location: event.mapPoint 
-              });
+              view.popup.open({ features: [routeGraphic], location: event.mapPoint });
             }
           } catch (err) {
             console.error("Error en la petición:", err);
