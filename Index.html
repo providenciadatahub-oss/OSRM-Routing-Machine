@@ -15,8 +15,8 @@
 </head>
 <body>
   <div id="panel">
-    <b>OSRM Routing</b><br>
-    <small>Haz clic en dos puntos del mapa para trazar la ruta.</small>
+    <b>OSRM Routing - Providencia</b><br>
+    <small>Haz clic en dos puntos del mapa para calcular la ruta.</small>
   </div>
   <div id="viewDiv"></div>
 
@@ -33,14 +33,13 @@
       const view = new MapView({ 
         container: "viewDiv", 
         map: map, 
-        center: [-70.614, -33.423], // Providencia
+        center: [-70.614, -33.423], 
         zoom: 14 
       });
 
       let points = [];
 
       view.on("click", async (event) => {
-        // Reiniciar si ya hay dos puntos en el mapa
         if (points.length >= 2) {
             points = [];
             view.graphics.removeAll();
@@ -49,9 +48,9 @@
         const lon = event.mapPoint.longitude;
         const lat = event.mapPoint.latitude;
         
-        points.push({ lat: lat, lon: lon });
+        points.push({ lon: lon, lat: lat });
 
-        // Dibujar marcador del punto clicado
+        // Marcador visual del punto
         view.graphics.add(new Graphic({
           geometry: event.mapPoint,
           symbol: { 
@@ -61,29 +60,24 @@
           }
         }));
 
-        // Ejecutar ruteo al tener el segundo punto
+        // INTEGRACIÓN DE LA MODIFICACIÓN
         if (points.length === 2) {
-          // MODIFICACIÓN: Redondeo a 6 decimales para evitar URLs malformadas (Error 400)
+          // Limitamos a 6 decimales para evitar el error 400 (Bad Request)
           const p1 = `${points[0].lon.toFixed(6)},${points[0].lat.toFixed(6)}`;
           const p2 = `${points[1].lon.toFixed(6)},${points[1].lat.toFixed(6)}`;
           const coordsString = `${p1};${p2}`;
           
-          console.log("Calculando ruta para:", coordsString);
+          console.log("Petición a la función con:", coordsString);
 
           try {
-            // Llamada directa a la función en la carpeta de Netlify
+            // Llamada directa a la función de Netlify
             const res = await fetch(`/.netlify/functions/index?coords=${coordsString}`);
             
-            if (!res.ok) {
-              const errorDetail = await res.json();
-              console.error("Error desde el Proxy:", errorDetail);
-              return;
-            }
+            if (!res.ok) throw new Error("Error en la respuesta del servidor");
             
             const data = await res.json();
 
             if (data.features && data.features.length > 0) {
-              // Crear la geometría de la ruta
               const routeGraphic = new Graphic({
                 geometry: new Polyline(data.features[0].geometry),
                 symbol: { 
@@ -100,14 +94,13 @@
 
               view.graphics.add(routeGraphic);
               
-              // Abrir popup con resultados
               view.popup.open({ 
                 features: [routeGraphic], 
                 location: event.mapPoint 
               });
             }
           } catch (err) {
-            console.error("Error de conexión con la función:", err);
+            console.error("Error en la petición:", err);
           }
         }
       });
